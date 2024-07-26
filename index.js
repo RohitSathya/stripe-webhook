@@ -1,76 +1,69 @@
 const express = require('express');
-const dotenv = require('dotenv');
-const stripe = require('stripe');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // Replace with your actual secret key
 const bodyParser = require('body-parser');
-const cors = require('cors');
-
-dotenv.config();
-
 const app = express();
-const stripeClient = stripe(process.env.STRIPE_SECRET_KEY); // Use test secret key
 
-app.use(cors());
 app.use(bodyParser.json());
 
-// Endpoint to create a Checkout Session
-app.post('/create-checkout-session', async (req, res) => {
-  const { email, planId } = req.body;
-  try {
-    const session = await stripeClient.checkout.sessions.create({
-      payment_method_types: ['card'],
-      mode: 'subscription',
-      customer_email: email,
-      line_items: [{
-        price: planId,
-        quantity: 1,
-      }],
-      success_url: 'https://your-website.com/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://your-website.com/cancel',
-    });
-    res.json({ id: session.id });
-  } catch (error) {
-    console.error('Error creating Checkout Session:', error);
-    res.status(500).json({ error: error.message });
-  }
+app.post('/create-payment-intent', async (req, res) => {
+    const { amount } = req.body;
+
+    try {
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount,
+            currency: 'inr',
+            payment_method_types: ['card'],
+        });
+
+        res.send({
+            clientSecret: paymentIntent.client_secret,
+            id: paymentIntent.id,
+        });
+    } catch (error) {
+        res.status(400).send({ error: error.message });
+    }
 });
 
-// Webhook endpoint to handle Stripe events
-app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => {
-  const sig = req.headers['stripe-signature'];
+app.post('/retrieve-payment-method-id', async (req, res) => {
+    const { paymentIntentId } = req.body;
 
-  let event;
+    try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        const paymentMethodId = paymentIntent.payment_method;
 
-  try {
-    event = stripeClient.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET_TEST);
-  } catch (err) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
-    res.status(400).send(`Webhook Error: ${err.message}`);
-    return;
-  }
-
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      const session = event.data.object;
-      // Fulfill the purchase...
-      console.log(`Checkout session completed: ${session.id}`);
-      break;
-    case 'invoice.payment_succeeded':
-      const invoice = event.data.object;
-      // Handle successful payment here
-      console.log(`Invoice payment succeeded: ${invoice.id}`);
-      break;
-    case 'invoice.payment_failed':
-      const invoiceFailed = event.data.object;
-      // Handle failed payment here
-      console.log(`Invoice payment failed: ${invoiceFailed.id}`);
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
-
-  res.status(200).end();
+        res.send({
+            paymentMethodId: paymentMethodId,
+        });
+    } catch (error) {
+        res.status(400).send({ error: error.message });
+    }
 });
 
-const PORT = process.env.PORT || 4242;
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+app.post('/create-subscription', async (req, res) => {
+    const { email, paymentMethodId, planId } = req.body;
+
+    try {
+        const customer = await stripe.customers.create({
+            email: email,
+            payment_method: paymentMethodId,
+            invoice_settings: {
+                default_payment_method: paymentMethodId,
+            },
+        });
+
+        const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            items: [{ plan: planId }],
+            expand: ['latest_invoice.payment_intent'],
+        });
+
+        res.send(subscription);
+    } catch (error) {
+        res.status(400).send({ error: error.message });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
