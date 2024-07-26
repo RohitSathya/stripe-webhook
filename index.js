@@ -55,6 +55,19 @@ app.post('/create-subscription', async (req, res) => {
   }
 });
 
+// Endpoint to retrieve PaymentMethodId from PaymentIntent
+app.post('/retrieve-payment-method-id', async (req, res) => {
+  const { paymentIntentId } = req.body;
+  try {
+    const paymentIntent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+    const paymentMethodId = paymentIntent.payment_method;
+    res.json({ paymentMethodId });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Webhook endpoint to handle Stripe events
 app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => {
   const sig = req.headers['stripe-signature'];
