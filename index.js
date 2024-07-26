@@ -9,9 +9,16 @@ dotenv.config();
 const app = express();
 const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
 
-// Use body-parser for JSON
-app.use(bodyParser.json());
 app.use(cors());
+
+// Use body-parser for JSON, but not for the webhook endpoint
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    if (req.originalUrl.startsWith('/webhook')) {
+      req.rawBody = buf.toString();
+    }
+  }
+}));
 
 // Endpoint to create a PaymentIntent
 app.post('/create-payment-intent', async (req, res) => {
@@ -80,7 +87,7 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) =>
 
   try {
     // Construct the event using the raw body and the Stripe signature
-    event = stripeClient.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripeClient.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     res.status(400).send(`Webhook Error: ${err.message}`);
