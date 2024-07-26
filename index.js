@@ -7,7 +7,7 @@ const cors = require('cors');
 dotenv.config();
 
 const app = express();
-const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
+const stripeClient = stripe(process.env.STRIPE_SECRET_KEY); // Use test secret key
 
 app.use(cors());
 
@@ -34,7 +34,7 @@ app.post('/create-payment-intent', async (req, res) => {
       id: paymentIntent.id,
     });
   } catch (error) {
-    console.error(error);
+    console.error('Error creating PaymentIntent:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -43,6 +43,8 @@ app.post('/create-payment-intent', async (req, res) => {
 app.post('/create-subscription', async (req, res) => {
   const { email, paymentMethodId, planId } = req.body;
   try {
+    console.log(`Creating subscription for email: ${email}, paymentMethodId: ${paymentMethodId}, planId: ${planId}`);
+
     // Create a new customer
     const customer = await stripeClient.customers.create({
       email,
@@ -52,17 +54,21 @@ app.post('/create-subscription', async (req, res) => {
       },
     });
 
+    console.log(`Customer created: ${customer.id}`);
+
     // Create a subscription
     const subscription = await stripeClient.subscriptions.create({
       customer: customer.id,
-      items: [{ plan: planId }],
+      items: [{ price: planId }], // Use the planId here
       expand: ['latest_invoice.payment_intent'],
     });
 
+    console.log('Subscription created successfully:', subscription.id);
     res.json(subscription);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
+    console.error('Error creating subscription:', error);
+    console.error('Stripe Error:', error.raw ? error.raw.message : error.message); // Log Stripe error details
+    res.status(500).json({ error: error.raw ? error.raw.message : error.message });
   }
 });
 
@@ -74,7 +80,7 @@ app.post('/retrieve-payment-method-id', async (req, res) => {
     const paymentMethodId = paymentIntent.payment_method;
     res.json({ paymentMethodId });
   } catch (error) {
-    console.error(error);
+    console.error('Error retrieving PaymentMethodId:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -87,7 +93,7 @@ app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) =>
 
   try {
     // Construct the event using the raw body and the Stripe signature
-    event = stripeClient.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripeClient.webhooks.constructEvent(req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET_TEST);
   } catch (err) {
     console.error(`Webhook signature verification failed: ${err.message}`);
     res.status(400).send(`Webhook Error: ${err.message}`);
