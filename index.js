@@ -21,7 +21,10 @@ app.post('/create-payment-intent', async (req, res) => {
       currency: 'inr',
       payment_method_types: ['card'],
     });
-    res.json({ clientSecret: paymentIntent.client_secret });
+    res.json({ 
+      clientSecret: paymentIntent.client_secret,
+      id: paymentIntent.id,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
